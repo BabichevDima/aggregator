@@ -1,30 +1,40 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"github.com/BabichevDima/aggregator/internal/config"
+    "os"
 )
 
 func main() {
+	if len(os.Args) < 2 {
+		log.Fatal("Error: not enough arguments were provided!")
+	}
 	// Read the config file
 	cfg, err := config.Read()
 	if err != nil {
 		log.Fatalf("Error reading config: %v", err)
 	}
 
-	// Set the current user to your name (replace "dimababichau" with your actual name)
-	if err := cfg.SetUser("dimababichau"); err != nil {
-		log.Fatalf("Error updating config: %v", err)
+	state := &config.State{
+		Config: cfg,
 	}
 
-	// Read the config file again
-	updatedCfg, err := config.Read()
-	if err != nil {
-		log.Fatalf("Error reading updated config: %v", err)
+	commands := config.NewCommands()
+	commands.Register("login", config.HandlerLogin)
+
+	cmdName := os.Args[1]
+	var cmdArgs []string
+	if len(os.Args) > 2 {
+		cmdArgs = os.Args[2:]
 	}
 
-	// Print the contents of the config struct
-	fmt.Println(updatedCfg)
-	fmt.Printf("%+v\n", *updatedCfg)
+	cmd := config.Command{
+		Name: cmdName,
+		Args: cmdArgs,
+	}
+
+	if err := commands.Run(state, cmd); err != nil {
+		log.Fatalf("Error: %v", err)
+	}
 }
