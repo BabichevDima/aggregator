@@ -1,9 +1,14 @@
 package main
 
 import (
+	// PostgreSQL driver (imported for side effects)
+	_ "github.com/lib/pq"
 	"log"
 	"github.com/BabichevDima/aggregator/internal/config"
-    "os"
+	"github.com/BabichevDima/aggregator/internal/database"
+	"os"
+	"fmt"
+	"database/sql"
 )
 
 func main() {
@@ -16,12 +21,23 @@ func main() {
 		log.Fatalf("Error reading config: %v", err)
 	}
 
+	db, err := sql.Open("postgres", cfg.DBUrl)
+	if err != nil {
+        log.Fatalf("Failed to connect to database: %v", err)
+    }
+	defer db.Close()
+
+    // Создание экземпляра queries
+    dbQueries := database.New(db)
+
 	state := &config.State{
-		Config: cfg,
+		DB:		dbQueries,
+		Config:	cfg,
 	}
 
 	commands := config.NewCommands()
 	commands.Register("login", config.HandlerLogin)
+	commands.Register("register", config.HandlerRegister)
 
 	cmdName := os.Args[1]
 	var cmdArgs []string

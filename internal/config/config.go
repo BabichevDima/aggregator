@@ -6,6 +6,13 @@ import (
     "os"
     "path/filepath"
 	"errors"
+	"github.com/BabichevDima/aggregator/internal/database"
+    "github.com/google/uuid"
+    "time"
+    "context"
+	"strings"
+	
+	"database/sql"
 )
 const configFileName = ".gatorconfig.json"
 
@@ -16,6 +23,7 @@ type Config struct {
 
 type State struct {
 	Config *Config
+	DB  *database.Queries
 }
 
 type Command struct {
@@ -56,6 +64,17 @@ func HandlerLogin(s *State, cmd Command) error {
 	}
 
 	username := cmd.Args[0]
+
+    // Проверка существования пользователя
+    _, err := s.DB.GetUser(context.Background(), username)
+    if err != nil {
+        if err == sql.ErrNoRows {
+			return fmt.Errorf("user '%s' does not exist\n", username)
+        }
+        fmt.Printf("Error checking user: %v\n", err)
+        os.Exit(1)
+    }
+
 	s.Config.CurrentUserName = username
 
 	if err := write(*s.Config); err != nil {
@@ -63,6 +82,44 @@ func HandlerLogin(s *State, cmd Command) error {
 	}
 
 	fmt.Printf("User set to: %s\n", username)
+	return nil
+}
+
+func HandlerRegister(s *State, cmd Command) error {
+	if len(cmd.Args) == 0 {
+		return errors.New("username is required")
+	}
+	if len(cmd.Args) > 1 {
+		return errors.New("Register accepts only one argument (username)")
+	}
+
+	username := cmd.Args[0]
+    // Генерация UUID и времени
+    id := uuid.New()
+    now := time.Now()
+
+	_, err := s.DB.CreateUser(context.Background(), database.CreateUserParams{
+        ID:        id,
+        CreatedAt: now,
+        UpdatedAt: now,
+        Name:      username,
+    })
+	// Обработка ошибок (включая случай существующего пользователя)
+    if err != nil {
+        if strings.Contains(err.Error(), "duplicate key") {
+            return fmt.Errorf("user '%s' already exists", username)
+        }
+        return fmt.Errorf("failed to create user: %w", err)
+    }
+
+	// Обновление текущего пользователя в конфиге
+    s.Config.CurrentUserName = username
+    if err := write(*s.Config); err != nil {
+        return fmt.Errorf("failed to save config: %w", err)
+    }
+
+    // Вывод результата
+    fmt.Printf("User '%s' created successfully\n", username)
 	return nil
 }
 
