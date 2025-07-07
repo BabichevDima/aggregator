@@ -7,7 +7,6 @@ import (
 	"github.com/BabichevDima/aggregator/internal/config"
 	"github.com/BabichevDima/aggregator/internal/database"
 	"os"
-	"fmt"
 	"database/sql"
 )
 

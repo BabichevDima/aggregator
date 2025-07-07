@@ -1,20 +1,23 @@
 package config
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
-    "encoding/json"
     "os"
     "path/filepath"
-	"errors"
-	"github.com/BabichevDima/aggregator/internal/database"
-    "github.com/google/uuid"
-    "time"
-    "context"
 	"strings"
-	
-	"database/sql"
+    "time"
+
+	"github.com/BabichevDima/aggregator/internal/database"
+	"github.com/google/uuid"
 )
-const configFileName = ".gatorconfig.json"
+const (
+	configFileName = ".gatorconfig.json"
+	configFilePerm = 0644
+)
 
 type Config struct {
 	DBUrl           string `json:"db_url"`
@@ -65,61 +68,109 @@ func HandlerLogin(s *State, cmd Command) error {
 
 	username := cmd.Args[0]
 
-    // Проверка существования пользователя
-    _, err := s.DB.GetUser(context.Background(), username)
-    if err != nil {
-        if err == sql.ErrNoRows {
-			return fmt.Errorf("user '%s' does not exist\n", username)
-        }
-        fmt.Printf("Error checking user: %v\n", err)
-        os.Exit(1)
-    }
+	if _, err := getUser(s.DB, username); err != nil {
+		return fmt.Errorf("login failed: %w", err)
+	}
 
-	s.Config.CurrentUserName = username
-
-	if err := write(*s.Config); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := updateConfigUser(s.Config, username); err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
 	}
 
 	fmt.Printf("User set to: %s\n", username)
 	return nil
 }
 
-func HandlerRegister(s *State, cmd Command) error {
-	if len(cmd.Args) == 0 {
-		return errors.New("username is required")
+func getUser(db *database.Queries, username string) (*database.User, error) {
+	user, err := db.GetUser(context.Background(), username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("user '%s' does not exist", username)
+		}
+		return nil, fmt.Errorf("database error: %w", err)
 	}
-	if len(cmd.Args) > 1 {
-		return errors.New("Register accepts only one argument (username)")
+	return &user, nil
+}
+
+func updateConfigUser(cfg *Config, username string) error {
+	cfg.CurrentUserName = username
+	if err := saveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func saveConfig(cfg *Config) error {
+	path, err := configFilePath()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, configFilePerm); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
+}
+
+func configFilePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(home, configFileName), nil
+}
+
+func HandlerRegister(s *State, cmd Command) error {
+	if err := validateArgs(cmd.Args, 1, "register"); err != nil {
+		return err
 	}
 
 	username := cmd.Args[0]
-    // Генерация UUID и времени
-    id := uuid.New()
-    now := time.Now()
-
-	_, err := s.DB.CreateUser(context.Background(), database.CreateUserParams{
-        ID:        id,
-        CreatedAt: now,
-        UpdatedAt: now,
-        Name:      username,
-    })
-	// Обработка ошибок (включая случай существующего пользователя)
-    if err != nil {
-        if strings.Contains(err.Error(), "duplicate key") {
-            return fmt.Errorf("user '%s' already exists", username)
-        }
-        return fmt.Errorf("failed to create user: %w", err)
-    }
+    if err := createUser(s.DB, username); err != nil {
+		return fmt.Errorf("registration failed: %w", err)
+	}
 
 	// Обновление текущего пользователя в конфиге
     s.Config.CurrentUserName = username
-    if err := write(*s.Config); err != nil {
-        return fmt.Errorf("failed to save config: %w", err)
-    }
+	if err := updateConfigUser(s.Config, username); err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
+	}
 
     // Вывод результата
     fmt.Printf("User '%s' created successfully\n", username)
+	return nil
+}
+
+func validateArgs(args []string, expected int, cmdName string) error {
+	switch {
+	case len(args) < expected:
+		return fmt.Errorf("%s requires %d argument(s)", cmdName, expected)
+	case len(args) > expected:
+		return fmt.Errorf("%s accepts only %d argument(s)", cmdName, expected)
+	}
+	return nil
+}
+
+func createUser(db *database.Queries, username string) error {
+	_, err := db.CreateUser(context.Background(), database.CreateUserParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      username,
+	})
+
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			return fmt.Errorf("user '%s' already exists", username)
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
 	return nil
 }
 
@@ -170,7 +221,7 @@ func write(cfg Config) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, configFilePerm); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
