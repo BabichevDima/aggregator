@@ -195,9 +195,9 @@ func HandlerUsers(s *State, cmd Command) error {
 func validateArgs(args []string, expected int, cmdName string) error {
 	switch {
 	case len(args) < expected:
-		return fmt.Errorf("%s requires %d argument(s)", cmdName, expected)
+		return fmt.Errorf("'%s' requires %d argument(s)", cmdName, expected)
 	case len(args) > expected:
-		return fmt.Errorf("%s accepts only %d argument(s)", cmdName, expected)
+		return fmt.Errorf("'%s' accepts only %d argument(s)", cmdName, expected)
 	}
 	return nil
 }
@@ -333,4 +333,35 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
     }
 
 	return &rssFeed, nil
+}
+
+func HandlerAddFeed(s *State, cmd Command) error {
+	if err := validateArgs(cmd.Args, 2, "addfeed"); err != nil {
+		return err
+	}
+
+	user, err := getUser(s.DB, s.Config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("failed wth next reason: %w", err)
+	}
+
+	feed, err := s.DB.CreateFeed(context.Background(), database.CreateFeedParams{
+		ID:			uuid.New(),
+		CreatedAt:	time.Now(),
+		UpdatedAt:	time.Now(),
+		Name:		cmd.Args[0],
+		Url:		cmd.Args[1],
+		UserID:		user.ID,
+	})
+
+	fmt.Printf("Created feed: %+v\n", feed)
+
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			return fmt.Errorf("url '%s' already exists", cmd.Args[1])
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	return nil
 }
