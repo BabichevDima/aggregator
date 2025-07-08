@@ -363,6 +363,16 @@ func HandlerAddFeed(s *State, cmd Command) error {
 		return fmt.Errorf("database error: %w", err)
 	}
 
+	feedFollow, err := s.DB.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:			uuid.New(),
+		CreatedAt:	time.Now(),
+		UpdatedAt:	time.Now(),
+		UserID:		user.ID,
+		FeedID:		feed.ID,
+	})
+
+	fmt.Println("NEW feedFollow:", feedFollow)
+
 	return nil
 }
 
@@ -379,5 +389,61 @@ func HandlerFeeds(s *State, cmd Command) error {
 		fmt.Println("Feed's username:", feeds[i].Username)
 		fmt.Println()
 	}
+	return nil
+}
+
+func HandlerFollow(s *State, cmd Command) error {
+	if err := validateArgs(cmd.Args, 1, "follow"); err != nil {
+		return err
+	}
+
+	url := cmd.Args[0]
+
+	user, err := getUser(s.DB, s.Config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("failed wth next reason: %w", err)
+	}
+
+	currentFeed, err := s.DB.GetFeedByURL(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("failed wth next reason: %w", err)
+	}
+
+
+	feed, err := s.DB.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:			uuid.New(),
+		CreatedAt:	time.Now(),
+		UpdatedAt:	time.Now(),
+		UserID:		user.ID,
+		FeedID:		currentFeed.ID,
+	})
+
+	fmt.Println("NEW feed:", feed)
+
+	return nil
+}
+
+
+func HandlerFollowing(s *State, cmd Command) error {
+	if err := validateArgs(cmd.Args, 0, "following"); err != nil {
+		return err
+	}
+
+	user, err := getUser(s.DB, s.Config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("failed wth next reason: %w", err)
+	}
+
+	FeedFollowsForUser, err := s.DB.GetFeedFollowsForUser(context.Background(), user.ID)
+	if err != nil {
+		return fmt.Errorf("failed wth next reason: %w", err)
+	}
+
+	fmt.Println("The names of the feeds the current user is following:")
+
+	for i, _ := range FeedFollowsForUser {
+		fmt.Println("*", FeedFollowsForUser[i].FeedName)
+	}
+
 	return nil
 }
