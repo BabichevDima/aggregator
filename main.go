@@ -41,6 +41,7 @@ func main() {
 	commands.Register("users", config.HandlerUsers)
 	commands.Register("agg", config.HandlerAgg)
 	commands.Register("addfeed", config.HandlerAddFeed)
+	commands.Register("feeds", config.HandlerFeeds)
 
 	cmdName := os.Args[1]
 	var cmdArgs []string

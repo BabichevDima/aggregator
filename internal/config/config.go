@@ -365,3 +365,19 @@ func HandlerAddFeed(s *State, cmd Command) error {
 
 	return nil
 }
+
+func HandlerFeeds(s *State, cmd Command) error {
+	feeds, err := s.DB.GetFeeds(context.Background())
+	if err != nil {
+		return fmt.Errorf("Get Feeds failed: %w", err)
+	}
+
+	for i, _ := range feeds {
+		fmt.Println("Information about feed number - ", i)
+		fmt.Println("Feed's name:", feeds[i].Name)
+		fmt.Println("Feed's url:", feeds[i].Url)
+		fmt.Println("Feed's username:", feeds[i].Username)
+		fmt.Println()
+	}
+	return nil
+}
