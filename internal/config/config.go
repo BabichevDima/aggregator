@@ -4,12 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
-    "os"
-    "path/filepath"
+	"os"
+	"io"
+	"path/filepath"
 	"strings"
-    "time"
+	"time"
+	"html"
+
+	"net/http"
 
 	"github.com/BabichevDima/aggregator/internal/database"
 	"github.com/google/uuid"
@@ -39,6 +44,24 @@ type CommandHandler func(*State, Command) error
 type Commands struct {
 	handlers map[string]CommandHandler
 }
+
+// TODO: RSS
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+// TODO: RSS
 
 func NewCommands() *Commands {
 	return &Commands{
@@ -249,4 +272,65 @@ func write(cfg Config) error {
 	}
 
 	return nil
+}
+
+func HandlerAgg(s *State, cmd Command) error {
+	feedURL := "https://www.wagslane.dev/index.xml"
+
+	rssFeed, err := fetchFeed(context.Background(), feedURL)
+	if err != nil {
+		return fmt.Errorf("Fetch Feed failed: %w", err)
+	}
+
+	fmt.Println(rssFeed)
+	fmt.Println("Title:", rssFeed.Channel.Item[0].Title)
+	fmt.Println("Description:", rssFeed.Channel.Item[0].Description)
+
+	return nil
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	// set request headers
+	req.Header.Set("User-Agent", "gator")
+
+	// create a new client and make the request
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("making request: %w", err)
+	}
+	defer res.Body.Close()
+
+    // Check status code
+    if res.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+    }
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var rssFeed RSSFeed
+	if err := xml.Unmarshal(data, &rssFeed); err != nil {
+		return nil, fmt.Errorf("parsing XML: %w", err)
+	}
+
+	// Decode HTML entities in text fields
+	rssFeed.Channel.Title = html.UnescapeString(rssFeed.Channel.Title)
+    rssFeed.Channel.Description = html.UnescapeString(rssFeed.Channel.Description)
+
+    for i := range rssFeed.Channel.Item {
+        item := &rssFeed.Channel.Item[i]
+        item.Title = html.UnescapeString(item.Title)
+        item.Description = html.UnescapeString(item.Description)
+    }
+
+	return &rssFeed, nil
 }
