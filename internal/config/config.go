@@ -146,6 +146,15 @@ func HandlerRegister(s *State, cmd Command) error {
 	return nil
 }
 
+func HandlerReset(s *State, cmd Command) error {
+    if err := s.DB.DeleteAllUsers(context.Background()); err != nil {
+		return fmt.Errorf("reset failed: %w", err)
+	}
+
+    fmt.Printf("Table was successful reset to a blank state\n")
+	return nil
+}
+
 func validateArgs(args []string, expected int, cmdName string) error {
 	switch {
 	case len(args) < expected:
