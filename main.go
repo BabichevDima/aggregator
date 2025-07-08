@@ -38,6 +38,7 @@ func main() {
 	commands.Register("login", config.HandlerLogin)
 	commands.Register("register", config.HandlerRegister)
 	commands.Register("reset", config.HandlerReset)
+	commands.Register("users", config.HandlerUsers)
 
 	cmdName := os.Args[1]
 	var cmdArgs []string
