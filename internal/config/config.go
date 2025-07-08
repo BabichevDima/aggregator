@@ -135,13 +135,11 @@ func HandlerRegister(s *State, cmd Command) error {
 		return fmt.Errorf("registration failed: %w", err)
 	}
 
-	// Обновление текущего пользователя в конфиге
     s.Config.CurrentUserName = username
 	if err := updateConfigUser(s.Config, username); err != nil {
 		return fmt.Errorf("failed to update config: %w", err)
 	}
 
-    // Вывод результата
     fmt.Printf("User '%s' created successfully\n", username)
 	return nil
 }
@@ -152,6 +150,22 @@ func HandlerReset(s *State, cmd Command) error {
 	}
 
     fmt.Printf("Table was successful reset to a blank state\n")
+	return nil
+}
+
+func HandlerUsers(s *State, cmd Command) error {
+	users, err := s.DB.GetUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("Get Users failed: %w", err)
+	}
+
+	for i, _ := range users {
+		message := "* " + users[i]
+		if s.Config.CurrentUserName == users[i] {
+			message += " (current)"
+		}
+		fmt.Println(message)
+	}
 	return nil
 }
 
