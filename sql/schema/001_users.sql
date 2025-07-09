@@ -19,6 +19,9 @@ CREATE TABLE feeds (
       ON DELETE CASCADE 
 );
 
+ALTER TABLE feeds 
+ADD COLUMN last_fetched_at TIMESTAMP WITH TIME ZONE NULL;
+
 CREATE TABLE feed_follows (
   id UUID PRIMARY KEY,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -37,8 +40,11 @@ CREATE TABLE feed_follows (
 );
 
 -- +goose Down
+DROP TABLE feed_follows;
+
+ALTER TABLE feeds
+DROP COLUMN last_fetched_at;
+
 DROP TABLE feeds;
 
 DROP TABLE users;
-
-DROP TABLE feed_follows;

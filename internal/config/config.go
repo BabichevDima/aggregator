@@ -274,21 +274,6 @@ func write(cfg Config) error {
 	return nil
 }
 
-func HandlerAgg(s *State, cmd Command) error {
-	feedURL := "https://www.wagslane.dev/index.xml"
-
-	rssFeed, err := fetchFeed(context.Background(), feedURL)
-	if err != nil {
-		return fmt.Errorf("Fetch Feed failed: %w", err)
-	}
-
-	fmt.Println(rssFeed)
-	fmt.Println("Title:", rssFeed.Channel.Item[0].Title)
-	fmt.Println("Description:", rssFeed.Channel.Item[0].Description)
-
-	return nil
-}
-
 func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
@@ -464,4 +449,56 @@ func HandlerUnfollow(s *State, cmd Command, user database.User) error {
 	fmt.Printf("Unfollowed feed with URL: %s\n", cmd.Args[0])
 
 	return nil
+}
+
+func HandlerAgg(s *State, cmd Command) error {
+	if err := validateArgs(cmd.Args, 1, "agg"); err != nil {
+		return err
+	}
+
+	timeBetweenRequests, err := time.ParseDuration(cmd.Args[0])
+	if err != nil {
+        return fmt.Errorf("invalid duration format: %w", err)
+    }
+	fmt.Println("Collecting feeds every ", timeBetweenRequests)
+
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+	}
+
+	return nil
+}
+
+func scrapeFeeds(s *State) {
+	// 1. Получить следующий фид для обработки
+	feed, err := s.DB.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("No feeds to fetch")
+			return
+		}
+		fmt.Printf("Error getting next feed: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\nFetching feed: %s (%s)\n", feed.Name, feed.Url)
+
+	// 2. Получить и обработать фид
+	rssFeed, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		fmt.Printf("Error fetching feed %s: %v\n", feed.Url, err)
+		return
+	}
+
+	// 3. Вывести элементы
+	for i, item := range rssFeed.Channel.Item {
+		fmt.Printf("%d. %s\n", i+1, item.Title)
+	}
+
+	// 4. Обновить время последнего фетчинга
+	err = s.DB.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		fmt.Printf("Error marking feed as fetched: %v\n", err)
+	}
 }
