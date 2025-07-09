@@ -435,11 +435,33 @@ func HandlerFollowing(s *State, cmd Command, user database.User) error {
 		return fmt.Errorf("failed wth next reason: %w", err)
 	}
 
-	fmt.Println("The names of the feeds the current user is following:")
+	if len(FeedFollowsForUser) == 0 {
+		fmt.Println("The current user is NOT subscribed to any feeds yet")
+	} else {
+		fmt.Println("The names of the feeds the current user is following:")
 
-	for i, _ := range FeedFollowsForUser {
-		fmt.Println("*", FeedFollowsForUser[i].FeedName)
+		for i, _ := range FeedFollowsForUser {
+			fmt.Println("*", FeedFollowsForUser[i].FeedName)
+		}
 	}
+
+	return nil
+}
+
+
+func HandlerUnfollow(s *State, cmd Command, user database.User) error {
+	if err := validateArgs(cmd.Args, 1, "unfollow"); err != nil {
+		return err
+	}
+
+	if err := s.DB.DeleteFeedFollowByURL(context.Background(), database.DeleteFeedFollowByURLParams{
+		UserID:	user.ID,
+		Url:	cmd.Args[0],
+	}); err != nil {
+		return fmt.Errorf("failed to unfollow: %w", err)
+	}
+
+	fmt.Printf("Unfollowed feed with URL: %s\n", cmd.Args[0])
 
 	return nil
 }
