@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"html"
+	"strconv"
 
 	"net/http"
 
@@ -492,8 +493,37 @@ func scrapeFeeds(s *State) {
 	}
 
 	// 3. Вывести элементы
-	for i, item := range rssFeed.Channel.Item {
-		fmt.Printf("%d. %s\n", i+1, item.Title)
+	for _, item := range rssFeed.Channel.Item {
+		// fmt.Printf("%d. %s\n", i+1, item.Title)
+		// Парсим дату публикации (с обработкой разных форматов)
+        publishedAt, err := parseFeedDate(item.PubDate)
+        if err != nil {
+            fmt.Printf("Error parsing date '%s': %v\n", item.PubDate, err)
+            publishedAt = time.Now() // Используем текущее время как fallback
+        }
+
+		// Создаем параметры для сохранения поста
+		_, err = s.DB.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: sql.NullString{String: item.Description, Valid: item.Description != ""},
+			PublishedAt: sql.NullTime{Time:  publishedAt, Valid: !publishedAt.IsZero()},
+			FeedID:      feed.ID,
+		})
+
+		// Обрабатываем ошибки
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key") {
+				// Пост уже существует - пропускаем
+				continue
+			}
+			fmt.Printf("Error saving post '%s': %v\n", item.Title, err)
+		} else {
+			fmt.Printf("Saved post: %s\n", item.Title)
+		}
 	}
 
 	// 4. Обновить время последнего фетчинга
@@ -501,4 +531,62 @@ func scrapeFeeds(s *State) {
 	if err != nil {
 		fmt.Printf("Error marking feed as fetched: %v\n", err)
 	}
+}
+
+func parseFeedDate(dateStr string) (time.Time, error) {
+    formats := []string{
+        time.RFC1123,
+        time.RFC1123Z,
+        time.RFC822,
+        time.RFC822Z,
+        time.RFC3339,
+        "Mon, 2 Jan 2006 15:04:05 -0700",
+        "2006-01-02T15:04:05Z",
+    }
+
+    for _, format := range formats {
+        t, err := time.Parse(format, dateStr)
+        if err == nil {
+            return t, nil
+        }
+    }
+    
+    return time.Time{}, fmt.Errorf("unrecognized date format: %s", dateStr)
+}
+
+func HandlerBrowse(s *State, cmd Command, user database.User) error {
+	limitPost := int32(2);
+
+	if len(cmd.Args) == 1 {
+        limit, err := strconv.ParseInt(cmd.Args[0], 10, 32)
+        if err != nil {
+            return fmt.Errorf("invalid limit value: %w", err)
+        }
+        limitPost = int32(limit)
+	}
+	
+	posts, err := s.DB.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID:	user.ID,
+		Limit:	limitPost,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to get posts: %w", err)
+	}
+
+	for i, post := range posts {
+		fmt.Printf("\n=== Post %d ===\n", i+1)
+		fmt.Printf("Title: %s\n", post.Title)
+		fmt.Printf("URL: %s\n", post.Url)
+
+		// Decode HTML entities in text fields
+		plainDesc := html.UnescapeString(post.Description.String)
+		fmt.Printf("Description:\n%s\n", plainDesc)
+
+		fmt.Printf("Published: %s\n", post.PublishedAt.Time.Format("2006-01-02 15:04"))
+		fmt.Printf("Feed: %s\n", post.FeedName)
+		fmt.Println("------------------------")
+	}
+
+	return nil
 }

@@ -95,3 +95,41 @@ SELECT * FROM feeds
 ORDER BY last_fetched_at NULLS FIRST, created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED;
+
+-- name: CreatePost :one
+INSERT INTO posts (
+    id,
+    created_at,
+    updated_at,
+    title,
+    url,
+    description,
+    published_at,
+    feed_id)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+RETURNING id, created_at, updated_at, title, url, description, published_at, feed_id;
+
+-- name: GetPostsForUser :many
+SELECT
+    posts.id,
+    posts.title,
+    posts.url,
+    posts.description,
+    posts.published_at,
+    posts.feed_id,
+    feeds.name AS feed_name
+FROM posts
+INNER JOIN feeds ON posts.feed_id = feeds.id
+INNER JOIN feed_follows ON feeds.id = feed_follows.feed_id
+WHERE feed_follows.user_id = $1
+ORDER BY posts.published_at DESC
+LIMIT $2;
