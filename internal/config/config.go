@@ -335,14 +335,9 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 	return &rssFeed, nil
 }
 
-func HandlerAddFeed(s *State, cmd Command) error {
+func HandlerAddFeed(s *State, cmd Command, user database.User) error {
 	if err := validateArgs(cmd.Args, 2, "addfeed"); err != nil {
 		return err
-	}
-
-	user, err := getUser(s.DB, s.Config.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("failed wth next reason: %w", err)
 	}
 
 	feed, err := s.DB.CreateFeed(context.Background(), database.CreateFeedParams{
@@ -376,6 +371,17 @@ func HandlerAddFeed(s *State, cmd Command) error {
 	return nil
 }
 
+func MiddlewareLoggedIn(handler func(s *State, cmd Command, user database.User) error) func(*State, Command) error {
+    return func(s *State, cmd Command) error {
+        user, err := getUser(s.DB, s.Config.CurrentUserName)
+        if err != nil {
+            return fmt.Errorf("failed to get user: %w", err)
+        }
+
+        return handler(s, cmd, *user)
+    }
+}
+
 func HandlerFeeds(s *State, cmd Command) error {
 	feeds, err := s.DB.GetFeeds(context.Background())
 	if err != nil {
@@ -392,17 +398,12 @@ func HandlerFeeds(s *State, cmd Command) error {
 	return nil
 }
 
-func HandlerFollow(s *State, cmd Command) error {
+func HandlerFollow(s *State, cmd Command, user database.User) error {
 	if err := validateArgs(cmd.Args, 1, "follow"); err != nil {
 		return err
 	}
 
 	url := cmd.Args[0]
-
-	user, err := getUser(s.DB, s.Config.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("failed wth next reason: %w", err)
-	}
 
 	currentFeed, err := s.DB.GetFeedByURL(context.Background(), url)
 	if err != nil {
@@ -424,14 +425,9 @@ func HandlerFollow(s *State, cmd Command) error {
 }
 
 
-func HandlerFollowing(s *State, cmd Command) error {
+func HandlerFollowing(s *State, cmd Command, user database.User) error {
 	if err := validateArgs(cmd.Args, 0, "following"); err != nil {
 		return err
-	}
-
-	user, err := getUser(s.DB, s.Config.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("failed wth next reason: %w", err)
 	}
 
 	FeedFollowsForUser, err := s.DB.GetFeedFollowsForUser(context.Background(), user.ID)
